@@ -9,10 +9,14 @@ import {
   doc,
 } from "firebase/firestore";
 
+const categories = ["Logo", "Poster", "Feed Instagram", "Banner", "UI Design"];
+
 function ProductCRUD() {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState({
-    name: "",
+    category: "",
+    title: "",
+    description: "",
     price: "",
   });
   const [editId, setEditId] = useState(null);
@@ -38,7 +42,7 @@ function ProductCRUD() {
       await addDoc(productsRef, form);
     }
 
-    setForm({ name: "", price: ""});
+    setForm({ category: "", title: "", description: "", price: "" });
     loadProducts();
   }
 
@@ -55,15 +59,43 @@ function ProductCRUD() {
         onSubmit={handleSubmit}
         className="bg-white/10 p-5 rounded-xl border border-white/10 mb-6"
       >
+        {/* DROPDOWN CATEGORY */}
+        <label className="block mb-2">Kategori Produk</label>
+        <select
+          className="w-full px-3 py-2 rounded bg-[#1e293b]/40 mb-3"
+          value={form.category}
+          onChange={(e) => setForm({ ...form, category: e.target.value })}
+          required
+        >
+          <option value="">Pilih kategori</option>
+          {categories.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
+          ))}
+        </select>
+
+        {/* Title */}
         <label className="block mb-2">Nama Produk</label>
         <input
           type="text"
           className="w-full px-3 py-2 rounded bg-white/20 mb-3"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
           required
         />
 
+        {/* Description */}
+        <label className="block mb-2">Deskripsi</label>
+        <input
+          type="text"
+          className="w-full px-3 py-2 rounded bg-white/20 mb-3"
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          required
+        />
+
+        {/* Price */}
         <label className="block mb-2">Harga</label>
         <input
           type="number"
@@ -81,10 +113,18 @@ function ProductCRUD() {
         </button>
       </form>
 
+      {/* LIST PRODUK */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {products.map((item) => (
-          <div key={item.id} className="bg-white/10 p-4 rounded-xl border border-white/10">
-            <h3 className="text-lg font-bold">{item.name}</h3>
+          <div
+            key={item.id}
+            className="bg-white/10 p-4 rounded-xl border border-white/10"
+          >
+            <h3 className="text-lg font-bold text-indigo-400">
+              {item.category}
+            </h3>
+            <h4 className="text-md font-semibold">{item.title}</h4>
+            <p className="text-gray-300 mb-2">{item.description}</p>
             <p className="text-gray-300 mb-2">Rp {item.price}</p>
 
             <div className="flex gap-2">
@@ -92,7 +132,9 @@ function ProductCRUD() {
                 onClick={() => {
                   setEditId(item.id);
                   setForm({
-                    name: item.name,
+                    category: item.category,
+                    title: item.title,
+                    description: item.description,
                     price: item.price,
                   });
                 }}

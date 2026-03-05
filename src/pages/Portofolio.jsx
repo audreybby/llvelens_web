@@ -78,25 +78,25 @@ export default function Portfolio() {
             </div>
 
             <div className="py-16 flex flex-col">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl mx-auto px-6 justify-start">
+            <div className="columns-2 md:columns-3 lg:columns-4 gap-6 max-w-6xl mx-auto px-6">
                 {filteredData.length === 0 ? (
                 <p className="text-gray-500 text-lg">Tidak ada data.</p>
                 ) : (
                 filteredData.map((item, index) => (
-                    <motion.div
-                    key={item.id}
-                    className="overflow-hidden rounded-lg shadow-lg"
-                    initial={{ opacity: 0, y: 50 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, delay: index * 0.2 }}
-                    viewport={{ once: true }}
-                    >
-                    <img
-                        src={item.image}
-                        alt="portfolio"
-                        className="w-full h-[340px] object-cover object-left hover:scale-105 transition-transform duration-500"
-                    />
-                    </motion.div>
+                <motion.div
+                  key={item.id}
+                  className="mb-6 break-inside-avoid rounded-lg overflow-hidden shadow-md"
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: index * 0.05 }}
+                  viewport={{ once: true }}
+                >
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    className="w-full h-auto object-contain"
+                  />
+                </motion.div>
                 ))
                 )}
             </div>

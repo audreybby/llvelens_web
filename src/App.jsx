@@ -12,6 +12,8 @@ import OrderForm from './pages/FormPesanan';
 import Profile from './pages/Profile';
 import OrdersSection from './components/PesananCRUD';
 import Portfolio from './pages/Portofolio';
+import Detail from './pages/Detail';
+import Contact from './pages/ContactPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -42,6 +44,8 @@ function App() {
           <Route path="/Profile" element={<Profile />} />
           <Route path="/AdminOrder" element={<OrdersSection />} />
           <Route path="/Portfolio" element={<Portfolio />} />
+          <Route path="/product/:id" element={<Detail />} />
+          <Route path="/Contact" element={<Contact />} />
         </Routes>
       </div>
     </Router>

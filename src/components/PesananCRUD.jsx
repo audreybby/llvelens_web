@@ -30,68 +30,172 @@ const ALL_STATUSES = [
 
 export default function OrdersSection() {
   const [orders, setOrders] = useState([]);
-  const [search, setSearch] = useState("");
-  const [sortType, setSortType] = useState("newest");
   const [selected, setSelected] = useState(null);
   const [zoomSrc, setZoomSrc] = useState(null);
-  const itemsPerPage = 7;
-  const [page, setPage] = useState(1);
 
+  // 🔥 state untuk panel upload
+  const [showRevisionUpload, setShowRevisionUpload] = useState(false);
+  const [showFinalUpload, setShowFinalUpload] = useState(false);
+  const [revisionMessage, setRevisionMessage] = useState("");
+  const [showProcessUpload, setShowProcessUpload] = useState(false);
+
+  // 🔥 realtime fetch
   useEffect(() => {
-    let q;
-    try {
-      q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-    } catch {
-      q = collection(db, "orders");
-    }
+    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
 
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setOrders(list);
-      },
-      (err) => {
-        console.error("orders snapshot error:", err);
-        setOrders([]);
-      }
-    );
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setOrders(list);
+    });
 
     return () => unsub();
   }, []);
 
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil((orders?.length || 0) / itemsPerPage));
-    if (page > totalPages) setPage(totalPages);
-  }, [orders, page]);
-
-  const filtered = (orders || []).filter((o) => {
-    const q = (search || "").toLowerCase().trim();
-    if (!q) return true;
-    return (
-      (o.name || "").toLowerCase().includes(q) ||
-      (o.email || "").toLowerCase().includes(q)
-    );
-  });
-
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortType === "newest") return (b.createdAt || 0) - (a.createdAt || 0);
-    if (sortType === "oldest") return (a.createdAt || 0) - (b.createdAt || 0);
-    if (sortType === "status") return (a.status || "").localeCompare(b.status || "");
-    return 0;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / itemsPerPage));
-  const pageData = sorted.slice((page - 1) * itemsPerPage, page * itemsPerPage);
-
+  // 🔥 update status normal
   const updateStatus = async (id, status) => {
-    try {
-      await updateDoc(doc(db, "orders", id), { status });
-      setSelected(null);
-    } catch (err) {
-      console.error("Failed updating status:", err);
-      alert("Gagal mengupdate status. Coba lagi.");
+    await updateDoc(doc(db, "orders", id), { status });
+
+    setSelected((prev) => ({ ...prev, status }));
+  };
+
+  // 🔥 klik status handler
+  const handleStatusClick = (status) => {
+  if (status === "process") {
+    // ❌ tidak boleh kembali ke process jika sudah lewat
+    if (selected.status !== "pending" && selected.status !== "approved") {
+      alert("Status tidak bisa kembali ke process.");
+      return;
     }
+
+    setShowProcessUpload(true);
+    setShowRevisionUpload(false);
+    setShowFinalUpload(false);
+    return;
+  }
+
+  if (status === "revisi") {
+    if ((selected.revisionCount || 0) >= 2) {
+      alert("Kesempatan revisi sudah habis.");
+      return;
+    }
+    setShowRevisionUpload(true);
+    setShowProcessUpload(false);
+    setShowFinalUpload(false);
+    return;
+  }
+
+  if (status === "completed") {
+    setShowFinalUpload(true);
+    setShowRevisionUpload(false);
+    setShowProcessUpload(false);
+    return;
+  }
+
+  updateStatus(selected.id, status);
+};
+
+  // 🔥 upload revisi
+  const uploadRevisionFile = async (file) => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result;
+
+      const newCount = (selected.revisionCount || 0) + 1;
+
+      await updateDoc(doc(db, "orders", selected.id), {
+        status: "revisi",
+        revisionCount: newCount,
+        revisionFiles: [...(selected.revisionFiles || []), base64],
+      });
+
+      setSelected((prev) => ({
+        ...prev,
+        status: "revisi",
+        revisionCount: newCount,
+        revisionFiles: [...(prev.revisionFiles || []), base64],
+      }));
+
+      setShowRevisionUpload(false);
+      alert("Revisi berhasil dikirim");
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  // 🔥 kirim pesan revisi (customer tracking)
+const sendRevisionMessage = async () => {
+  if (!revisionMessage.trim()) return;
+
+  const messageData = {
+    text: revisionMessage,
+    sender: "designer",
+    time: Date.now(),
+  };
+
+  await updateDoc(doc(db, "orders", selected.id), {
+    revisionMessages: [...(selected.revisionMessages || []), messageData],
+  });
+
+  setSelected((prev) => ({
+    ...prev,
+    revisionMessages: [...(prev.revisionMessages || []), messageData],
+  }));
+
+  setRevisionMessage("");
+};
+
+// 🔥 upload file saat process → otomatis revisi
+const uploadProcessFile = async (file) => {
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const base64 = reader.result;
+
+    await updateDoc(doc(db, "orders", selected.id), {
+      processFiles: [...(selected.processFiles || []), base64],
+      status: "revisi", // 🔥 otomatis jadi revisi
+    });
+
+    setSelected((prev) => ({
+      ...prev,
+      processFiles: [...(prev.processFiles || []), base64],
+      status: "revisi",
+    }));
+
+    setShowProcessUpload(false);
+    alert("File process dikirim ke client, status berubah ke revisi");
+  };
+
+  reader.readAsDataURL(file);
+};
+
+  // 🔥 upload final design
+  const uploadFinalDesign = async (file) => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result;
+
+      await updateDoc(doc(db, "orders", selected.id), {
+        finalFile: base64,
+        status: "completed",
+      });
+
+      setSelected((prev) => ({
+        ...prev,
+        finalFile: base64,
+        status: "completed",
+      }));
+
+      setShowFinalUpload(false);
+      alert("Design final berhasil dikirim");
+    };
+
+    reader.readAsDataURL(file);
   };
 
   const openDetails = (order) => {
@@ -101,13 +205,16 @@ export default function OrdersSection() {
 
   const closeDetails = () => {
     setSelected(null);
-    document.body.style.overflow = ""; 
+    setShowRevisionUpload(false);
+    setShowFinalUpload(false);
+    document.body.style.overflow = "";
   };
 
   const openZoom = (src) => {
     setZoomSrc(src);
     document.body.style.overflow = "hidden";
   };
+
   const closeZoom = () => {
     setZoomSrc(null);
     document.body.style.overflow = "";
@@ -115,227 +222,230 @@ export default function OrdersSection() {
 
   return (
     <div className="text-white">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-semibold">Pesanan Masuk</h2>
-          <p className="text-sm text-gray-300">Kelola pesanan pelanggan.</p>
-        </div>
-
-        <div className="flex gap-3">
-          <input
-            type="text"
-            placeholder="Search name / email..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 placeholder:text-gray-300 text-sm"
-          />
-
-          <select
-            value={sortType}
-            onChange={(e) => {
-              setSortType(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm"
-          >
-            <option value="newest">Terbaru</option>
-            <option value="oldest">Terlama</option>
-            <option value="status">Status</option>
-          </select>
-        </div>
-      </div>
-
+      {/* ================= TABLE ================= */}
       <div className="overflow-x-auto">
-        <div className="min-w-full bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+        <div className="min-w-full bg-white/5 rounded-2xl border border-white/10 backdrop-blur-md">
 
-          <div className="hidden md:grid grid-cols-12 px-4 py-3 text-gray-300 text-sm">
+          {/* HEADER */}
+          <div className="hidden md:grid grid-cols-12 px-6 py-4 text-gray-300 text-sm font-medium border-b border-white/10">
             <div className="col-span-3">Nama</div>
             <div className="col-span-3">Email</div>
             <div className="col-span-2">Produk</div>
             <div className="col-span-2">Status</div>
-            <div className="col-span-2 text-right">Detail</div>
+            <div className="col-span-2 text-right">Aksi</div>
           </div>
 
+          {/* ROWS */}
           <div className="divide-y divide-white/10">
-            {pageData.length === 0 ? (
-              <p className="p-6 text-center text-gray-400">Tidak ada pesanan ditemukan.</p>
-            ) : (
-              pageData.map((o) => {
-                const badge = BADGE_STYLES[o.status] || BADGE_STYLES.default;
-                return (
-                  <div
-                    key={o.id}
-                    className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 gap-3 hover:bg-white/5 transition"
-                  >
-                    <div className="md:col-span-3">
-                      <p className="text-xs md:hidden text-gray-400">Nama</p>
-                      <p>{o.name || "-"}</p>
-                    </div>
+            {orders.map((o) => {
+              const badge = BADGE_STYLES[o.status] || BADGE_STYLES.default;
 
-                    <div className="md:col-span-3">
-                      <p className="text-xs md:hidden text-gray-400">Email</p>
-                      <p>{o.email || "-"}</p>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <p className="text-xs md:hidden text-gray-400">Produk</p>
-                      <p>{o.productType || "-"}</p>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <p className="text-xs md:hidden text-gray-400">Status</p>
-                      <span className={`px-3 py-1 rounded-full text-xs ${badge}`}>
-                        {o.status || "pending"}
-                      </span>
-                    </div>
-
-                    <div className="md:col-span-2 text-right">
-                      <button
-                        onClick={() => openDetails(o)}
-                        className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm"
-                      >
-                        Lihat
-                      </button>
-                    </div>
+              return (
+                <div
+                  key={o.id}
+                  className="grid grid-cols-1 md:grid-cols-12 px-6 py-4 gap-4 items-center hover:bg-white/5 transition"
+                >
+                  <div className="md:col-span-3">
+                    <p className="text-xs text-gray-400 md:hidden">Nama</p>
+                    <p className="font-medium">{o.name}</p>
                   </div>
-                );
-              })
-            )}
+
+                  <div className="md:col-span-3">
+                    <p className="text-xs text-gray-400 md:hidden">Email</p>
+                    <p className="break-all text-sm text-gray-200">{o.email}</p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <p className="text-xs text-gray-400 md:hidden">Produk</p>
+                    <p>{o.productType}</p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <span className={`px-3 py-1 rounded-full text-xs ${badge}`}>
+                      {o.status}
+                    </span>
+                  </div>
+
+                  <div className="md:col-span-2 md:text-right">
+                    <button
+                      onClick={() => openDetails(o)}
+                      className="px-4 py-1.5 rounded-lg text-sm bg-white/10 hover:bg-white/20"
+                    >
+                      Lihat Detail
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between mt-4">
-        <div className="text-sm text-gray-300">
-          Menampilkan {Math.min((page - 1) * itemsPerPage + 1, Math.max(0, sorted.length))}–
-          {Math.min(page * itemsPerPage, sorted.length)} dari {sorted.length} hasil
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className={`px-3 py-1 rounded ${page <= 1 ? "bg-white/5 text-gray-400" : "bg-white/10"}`}
-          >
-            Prev
-          </button>
-
-          <div className="px-3 py-1 text-sm border rounded bg-white/5">
-            {page} / {totalPages}
-          </div>
-
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className={`px-3 py-1 rounded ${page >= totalPages ? "bg-white/5 text-gray-400" : "bg-white/10"}`}
-          >
-            Next
-          </button>
-        </div>
-      </div>
-
+      {/* ================= POPUP ================= */}
       {selected && (
-        <div
-          className="fixed inset-0 z-[100000] flex items-center justify-center"
-          aria-modal="true"
-          role="dialog"
-        >
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={closeDetails}
-          />
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="absolute inset-0 bg-black/60" onClick={closeDetails} />
 
-          <div className="relative bg-slate-800 rounded-xl w-full max-w-lg p-6 border border-white/10 shadow-2xl max-h-[90vh] overflow-auto">
-            <div className="flex justify-between items-start mb-4">
+          <div className="relative bg-slate-800 rounded-xl w-full max-w-xl p-6 max-h-[90vh] overflow-auto">
+            <div className="flex justify-between mb-6">
               <h3 className="text-lg font-semibold">Detail Pesanan</h3>
-              <button
-                onClick={closeDetails}
-                className="text-gray-300 hover:text-white"
-                aria-label="Close"
-              >
-                ✕
-              </button>
+              <button onClick={closeDetails}>✕</button>
             </div>
 
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="text-gray-400 text-xs">Nama</p>
-                <p>{selected.name || "-"}</p>
-              </div>
+            {/* CUSTOMER */}
+            <div className="mb-6">
+              <h4 className="text-gray-400 mb-2">Customer</h4>
+              <p><b>Nama:</b> {selected.name}</p>
+              <p><b>Email:</b> {selected.email}</p>
+              <p><b>Telepon:</b> {selected.phone}</p>
+            </div>
 
-              <div>
-                <p className="text-gray-400 text-xs">Email</p>
-                <p>{selected.email || "-"}</p>
-              </div>
+            {/* DETAIL */}
+            <div className="mb-6">
+              <h4 className="text-gray-400 mb-2">Detail</h4>
+              <p><b>Produk:</b> {selected.productType}</p>
+              <p className="whitespace-pre-line">{selected.details}</p>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-gray-400 text-xs">No Telp</p>
-                  <p>{selected.phone || "-"}</p>
-                </div>
+            {/* BUKTI */}
+            <div className="mb-6">
+              <h4 className="text-gray-400 mb-2">Bukti Pembayaran</h4>
+              {selected.paymentProof && (
+                <img
+                  src={selected.paymentProof}
+                  className="w-32 h-32 object-contain border rounded cursor-pointer"
+                  onClick={() => openZoom(selected.paymentProof)}
+                />
+              )}
+            </div>
 
-                <div>
-                  <p className="text-gray-400 text-xs">Produk</p>
-                  <p>{selected.productType || "-"}</p>
-                </div>
-              </div>
+            {/* STATUS */}
+            <div className="mb-6">
+              <h4 className="text-gray-400 mb-2">Progress</h4>
 
-              <div>
-                <p className="text-gray-400 text-xs">Detail</p>
-                <p className="whitespace-pre-line">{selected.details || "-"}</p>
-              </div>
+              {ALL_STATUSES.map((s, i) => {
+                const isActive = selected.status === s;
 
-              <div>
-                <p className="text-gray-400 text-xs mb-1">Bukti Pembayaran</p>
-                {selected.paymentProof ? (
-                  <img
-                    src={selected.paymentProof}
-                    alt="payment proof"
-                    className="w-full max-h-60 object-contain rounded-lg border border-white/10 cursor-pointer"
-                    onClick={() => openZoom(selected.paymentProof)}
-                  />
-                ) : (
-                  <p className="text-gray-500">Tidak ada bukti pembayaran</p>
-                )}
-              </div>
+                return (
+                  <div key={s}>
+                    <button
+                      onClick={() => handleStatusClick(s)}
+                      className={`text-left px-4 py-2 rounded-lg border w-full mb-2
+                        ${BADGE_STYLES[s]}
+                        ${isActive ? "ring-2 ring-white" : "opacity-70 hover:opacity-100"}
+                      `}
+                    >
+                      {i + 1}. {s}
+                    </button>
 
-              <div className="flex flex-wrap gap-2 mt-2">
-                {ALL_STATUSES.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => updateStatus(selected.id, s)}
-                    className={`px-3 py-1.5 rounded-md text-xs ${BADGE_STYLES[s]}`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+{/* 🟡 PANEL PROCESS */}
+{s === "process" && showProcessUpload && (
+  <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
+    <p className="text-xs text-gray-400 mb-2">
+      Upload hasil sementara untuk client
+    </p>
+    <input
+      type="file"
+      onChange={(e) => uploadProcessFile(e.target.files[0])}
+    />
+  </div>
+)}
 
-              <button
-                onClick={closeDetails}
-                className="w-full mt-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg"
-              >
-                Tutup
-              </button>
+{/* 🔵 PANEL REVISI */}
+{s === "revisi" && showRevisionUpload && (
+  <div className="mb-4 p-4 bg-white/5 rounded-lg border border-white/10 space-y-4">
+
+    {/* Upload */}
+    <div>
+      <p className="text-xs text-gray-400 mb-2">
+        Upload revisi ({selected.revisionCount || 0}/2)
+      </p>
+      <input
+        type="file"
+        onChange={(e) => uploadRevisionFile(e.target.files[0])}
+      />
+    </div>
+
+    {/* Chat Revisi */}
+    <div>
+      <p className="text-xs text-gray-400 mb-2">Pesan Revisi</p>
+
+      <div className="bg-black/30 rounded p-2 h-28 overflow-y-auto text-sm space-y-1">
+        {selected.revisionMessages?.map((msg, i) => (
+          <div key={i}>
+            <span className="text-blue-300 font-semibold">
+              {msg.sender}:
+            </span>{" "}
+            {msg.text}
+          </div>
+        ))}
+
+        {!selected.revisionMessages?.length && (
+          <p className="text-gray-500 text-xs">Belum ada pesan revisi</p>
+        )}
+      </div>
+
+      <div className="flex gap-2 mt-2">
+        <input
+          value={revisionMessage}
+          onChange={(e) => setRevisionMessage(e.target.value)}
+          placeholder="Tulis pesan revisi..."
+          className="flex-1 px-2 py-1 rounded bg-white/10 text-sm"
+        />
+        <button
+          onClick={sendRevisionMessage}
+          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded text-sm"
+        >
+          Kirim
+        </button>
+      </div>
+    </div>
+
+    {/* Riwayat File Revisi */}
+    {selected.revisionFiles?.length > 0 && (
+      <div>
+        <p className="text-xs text-gray-400 mb-2">Riwayat Revisi</p>
+        <div className="flex gap-2 flex-wrap">
+          {selected.revisionFiles.map((img, i) => (
+            <img
+              key={i}
+              src={img}
+              className="w-14 h-14 object-contain border rounded cursor-pointer"
+              onClick={() => openZoom(img)}
+            />
+          ))}
+        </div>
+      </div>
+    )}
+
+  </div>
+)}
+
+                    {/* 🟢 PANEL FINAL */}
+                    {s === "completed" && showFinalUpload && (
+                      <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
+                        <p className="text-xs text-gray-400 mb-2">
+                          Upload design final
+                        </p>
+                        <input
+                          type="file"
+                          onChange={(e) => uploadFinalDesign(e.target.files[0])}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
+      {/* ZOOM */}
       {zoomSrc && (
-        <div className="fixed inset-0 z-[110000] flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/70"
-            onClick={closeZoom}
-          />
-          <img
-            src={zoomSrc}
-            alt="zoom"
-            className="relative max-w-[92%] max-h-[92%] rounded-lg shadow-2xl"
-          />
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="absolute inset-0 bg-black/70" onClick={closeZoom} />
+          <img src={zoomSrc} className="max-w-[90%] max-h-[90%]" />
         </div>
       )}
     </div>

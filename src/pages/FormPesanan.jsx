@@ -21,6 +21,7 @@ export default function OrderForm() {
     phone: "",
     productType: selectedProduct?.name || "",
     details: "",
+    reference: "",
     price: selectedProduct?.price || 0,
     paymentProof: "",
   });
@@ -29,6 +30,7 @@ export default function OrderForm() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
   const [previewImg, setPreviewImg] = useState(null);
+  const [previewRef, setPreviewRef] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -78,6 +80,16 @@ export default function OrderForm() {
 
     setFormData((prev) => ({ ...prev, paymentProof: base64 }));
     setPreviewImg(base64);
+  };
+
+  const handleReferenceImage = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const base64 = await handleImageToBase64(file);
+
+    setFormData((prev) => ({ ...prev, reference: base64 }));
+    setPreviewRef(base64);
   };
 
   const handleSubmit = async (e) => {
@@ -191,6 +203,25 @@ export default function OrderForm() {
           required
           className="w-full border px-3 py-2 rounded-xl h-24 resize-none"
         />
+      </div>
+
+      <div>
+        <label className="font-medium">Upload Referensi</label>
+        <input
+          type="file"
+          accept="image/*"
+          required
+          onChange={handleReferenceImage}
+          className="w-full"
+        />
+
+        {previewRef && (
+          <img
+            src={previewRef}
+            className="w-full rounded-xl mt-3 border"
+            alt="preview"
+          />
+        )}
       </div>
 
       <div>

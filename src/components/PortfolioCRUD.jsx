@@ -8,24 +8,55 @@ import {
   updateDoc,
   doc,
 } from "firebase/firestore";
+import { serverTimestamp } from "firebase/firestore";
+
+const categories = ["Logo", "Poster", "Feed Instagram", "Banner", "UI Design"];
 
 function PortfolioCRUD() {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
     title: "",
-    category:"",
+    category: "",
     image: "",
+    createdAt: serverTimestamp(),
   });
   const [editId, setEditId] = useState(null);
 
   const portfolioRef = collection(db, "portfolio");
 
-  const convertToBase64 = (e) => {
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onload = () => setForm({ ...form, image: reader.result });
-    reader.readAsDataURL(file);
+const convertToBase64 = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = (event) => {
+    const img = new Image();
+    img.src = event.target.result;
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+
+      const MAX_WIDTH = 600;
+      const scaleSize = MAX_WIDTH / img.width;
+
+      canvas.width = MAX_WIDTH;
+      canvas.height = img.height * scaleSize;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+
+      setForm((prev) => ({
+        ...prev,
+        image: compressedBase64,
+      }));
+    };
   };
+
+  reader.readAsDataURL(file);
+};
 
   async function loadPortfolio() {
     const snap = await getDocs(portfolioRef);
@@ -39,15 +70,35 @@ function PortfolioCRUD() {
   async function handleSubmit(e) {
     e.preventDefault();
 
-    if (editId) {
-      await updateDoc(doc(db, "portfolio", editId), form);
-      setEditId(null);
-    } else {
-      await addDoc(portfolioRef, form);
+    if (!form.title || !form.category) {
+      alert("Judul & kategori wajib diisi");
+      return;
     }
 
-    setForm({ title: "", category:"", image: "" });
-    loadPortfolio();
+    if (!form.image && !editId) {
+      alert("Gambar wajib diisi");
+      return;
+    }
+
+    try {
+      if (editId) {
+        await updateDoc(doc(db, "portfolio", editId), {
+          title: form.title,
+          category: form.category,
+          image: form.image,
+          createdAt: serverTimestamp(),
+        });
+        setEditId(null);
+      } else {
+        await addDoc(portfolioRef, form);
+      }
+
+      setForm({ title: "", category: "", image: "", createdAt: serverTimestamp() });
+      loadPortfolio();
+    } catch (err) {
+      console.error(err);
+      alert("Gagal menyimpan data");
+    }
   }
 
   async function handleDelete(id) {
@@ -63,20 +114,30 @@ function PortfolioCRUD() {
         onSubmit={handleSubmit}
         className="bg-white/10 p-5 rounded-xl border border-white/10 mb-6"
       >
+        <label className="block mb-2">Kategori Produk</label>
+        <select
+          className="w-full px-3 py-2 rounded bg-[#1e293b]/40 mb-3"
+          value={form.category}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, category: e.target.value }))
+          }
+          required
+        >
+          <option value="">Pilih kategori</option>
+          {categories.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
+          ))}
+        </select>
+
         <label className="block mb-2">Judul</label>
         <input
           type="text"
           value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          className="w-full px-3 py-2 rounded bg-white/20 mb-3"
-          required
-        />
-
-        <label className="block mb-2">Kategori</label>
-        <input
-          type="text"
-          value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value })}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, title: e.target.value }))
+          }
           className="w-full px-3 py-2 rounded bg-white/20 mb-3"
           required
         />
@@ -109,16 +170,19 @@ function PortfolioCRUD() {
             <img
               src={item.image}
               className="w-full h-40 object-cover rounded mb-3"
+              alt={item.title}
             />
 
             <h3 className="text-lg font-bold">{item.title}</h3>
+            <p className="text-sm text-gray-300">{item.category}</p>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 mt-2">
               <button
                 onClick={() => {
                   setEditId(item.id);
                   setForm({
                     title: item.title,
+                    category: item.category,
                     image: item.image,
                   });
                 }}

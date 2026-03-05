@@ -33,6 +33,14 @@ export default function OrderModal({ order, close }) {
         <p><b>Produk:</b> {order.productType || "-"}</p>
         <p><b>Detail:</b> {order.details || "-"}</p>
 
+        {order.reference && (
+          <img
+            src={order.reference}
+            className="w-full rounded mt-3 shadow"
+            alt="referensi"
+          />
+        )}
+
         {order.paymentProof && (
           <img
             src={order.paymentProof}
