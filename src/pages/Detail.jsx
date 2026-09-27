@@ -1,6 +1,5 @@
-// src/pages/Detail.jsx
 import { useParams } from "react-router-dom";
-import ProductDetail from "../components/ProductDetail";
+import ProductDetail from "./ProductDetail";
 
 export default function Detail() {
   const { id } = useParams();

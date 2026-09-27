@@ -1,69 +1,46 @@
-import { FaWhatsapp, FaInstagram } from "react-icons/fa";
+import { FaInstagram } from "react-icons/fa";
 
 export default function Contact() {
-  const whatsappNumber = "6281234567890"; // ganti nomor kamu
-  const instagramUsername = "llvelens";   // ganti username kamu
+  const instagramUsername = "llvelens";
 
   return (
-    <section className="min-h-screen bg-[#F7FAFF] flex flex-col items-center justify-center px-4 sm:px-6">
-      <div className="text-center max-w-xl w-full">
-        {/* TITLE */}
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-aclonica text-[#1d3557] mb-4">
+    <section className="min-h-screen bg-gradient-to-br from-[#F7FAFF] to-[#EAF2FF] flex items-center justify-center px-4">
+      
+      <div className="bg-white shadow-xl rounded-2xl p-8 sm:p-10 max-w-md w-full text-center">
+
+        <div className="flex justify-center mb-6">
+          <div className="bg-pink-100 p-4 rounded-full">
+            <FaInstagram className="text-pink-500" size={30} />
+          </div>
+        </div>
+
+        <h1 className="text-3xl sm:text-4xl font-aclonica text-[#1D3557] mb-3">
           Hubungi Kami
         </h1>
 
-        {/* DESCRIPTION */}
-        <p className="text-gray-600 mb-8 md:mb-10 text-base sm:text-lg leading-relaxed">
-          Punya pertanyaan? <br className="sm:hidden" />
-          Hubungi kami langsung melalui WhatsApp atau Instagram.
+        <p className="text-gray-500 mb-8 text-sm sm:text-base leading-relaxed">
+          Punya pertanyaan atau ingin konsultasi desain?  
+          Kunjungi Instagram kami untuk informasi lebih lanjut.
         </p>
 
-        {/* BUTTON GROUP */}
-        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-center">
-          
-          {/* WhatsApp */}
-          <a
-            href={`https://wa.me/${whatsappNumber}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="
-              flex items-center justify-center gap-3
-              w-full sm:w-auto
-              bg-green-500 hover:bg-green-600
-              text-white
-              px-6 py-3
-              rounded-xl
-              shadow-lg
-              transition
-              text-base sm:text-lg
-            "
-          >
-            <FaWhatsapp size={22} />
-            Chat WhatsApp
-          </a>
+        <a
+          href={`https://instagram.com/${instagramUsername}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="
+            flex items-center justify-center gap-3
+            bg-gradient-to-r from-pink-500 to-purple-500
+            hover:opacity-90
+            text-white
+            py-3 rounded-xl
+            shadow-md hover:shadow-lg
+            transition-all duration-200
+          "
+        >
+          <FaInstagram size={20} />
+          {instagramUsername}
+        </a>
 
-          {/* Instagram */}
-          <a
-            href={`https://instagram.com/${instagramUsername}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="
-              flex items-center justify-center gap-3
-              w-full sm:w-auto
-              bg-pink-500 hover:bg-pink-600
-              text-white
-              px-6 py-3
-              rounded-xl
-              shadow-lg
-              transition
-              text-base sm:text-lg
-            "
-          >
-            <FaInstagram size={22} />
-            Kunjungi Instagram
-          </a>
-
-        </div>
       </div>
     </section>
   );

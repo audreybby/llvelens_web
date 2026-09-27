@@ -57,7 +57,7 @@ const Signin = () => {
       } else {
         await setDoc(doc(db, "users", user.uid), {
           email: user.email,
-          name: user.displayName,
+          username: user.displayName,
           role: "user",
           createdAt: new Date(),
         });

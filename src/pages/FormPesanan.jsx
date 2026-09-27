@@ -9,20 +9,22 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { useNavigate, useLocation } from "react-router-dom";
+import QRIS from '../assets/QRIS.png';
 
 export default function OrderForm() {
   const location = useLocation();
-  const selectedProduct = location.state?.product || null;
+  const selectedProduct = location.state || null;
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
-    name: "",
+    username: "",
     email: "",
     phone: "",
-    productType: selectedProduct?.name || "",
+    productType: selectedProduct?.title || "",
+    productCategory: selectedProduct?.category || "",
     details: "",
     reference: "",
-    price: selectedProduct?.price || 0,
+    price: selectedProduct?.price || "",
     paymentProof: "",
   });
 
@@ -43,8 +45,8 @@ export default function OrderForm() {
             const data = docSnap.data();
             setFormData((prev) => ({
               ...prev,
-              name: data.name || "",
-              email: data.email || currentUser.email,
+              username: data.username || "",
+              email: data.email || currentUser.email, 
               phone: data.phone || "",
             }));
           }
@@ -62,35 +64,74 @@ export default function OrderForm() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleImageToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+const compressImageToBase64 = (file, maxWidth = 800, targetSize = 300000) => {
+  return new Promise((resolve, reject) => {
 
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = (err) => reject(err);
-    });
-  };
+    const reader = new FileReader();
 
-  const handlePaymentImage = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    reader.readAsDataURL(file);
 
-    const base64 = await handleImageToBase64(file);
+    reader.onload = (event) => {
 
-    setFormData((prev) => ({ ...prev, paymentProof: base64 }));
-    setPreviewImg(base64);
-  };
+      const img = new Image();
 
-  const handleReferenceImage = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+      img.src = event.target.result;
 
-    const base64 = await handleImageToBase64(file);
+      img.onload = () => {
 
-    setFormData((prev) => ({ ...prev, reference: base64 }));
-    setPreviewRef(base64);
-  };
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = height * (maxWidth / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let quality = 0.8;
+        let base64 = canvas.toDataURL("image/jpeg", quality);
+
+        while (base64.length > targetSize && quality > 0.1) {
+          quality -= 0.1;
+          base64 = canvas.toDataURL("image/jpeg", quality);
+        }
+
+        resolve(base64);
+      };
+
+      img.onerror = reject;
+    };
+
+    reader.onerror = reject;
+  });
+};
+
+const handlePaymentImage = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const base64 = await compressImageToBase64(file);
+
+  setFormData((prev) => ({ ...prev, paymentProof: base64 }));
+  setPreviewImg(base64);
+};
+
+const handleReferenceImage = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const base64 = await compressImageToBase64(file);
+
+  setFormData((prev) => ({ ...prev, reference: base64 }));
+  setPreviewRef(base64);
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -102,6 +143,7 @@ export default function OrderForm() {
         userId: auth.currentUser.uid,
         createdAt: serverTimestamp(),
         status: "pending",
+        isArchived: false,
       });
 
       setSubmitted(true);
@@ -150,7 +192,7 @@ export default function OrderForm() {
       <div>
         <label className="font-medium">Nama</label>
         <input
-          value={formData.name}
+          value={formData.username}
           readOnly
           className="w-full bg-gray-100 px-3 py-2 rounded-xl"
         />
@@ -177,13 +219,22 @@ export default function OrderForm() {
       </div>
 
       <div>
+        <label className="font-small">Category</label>
+        <input
+          value={formData.productCategory}
+          readOnly
+          className="w-full bg-gray-100 px-3 py-2 rounded-xl"
+        />
+      </div>
+
+      <div>
         <label className="font-medium">Produk</label>
         <input
           value={formData.productType}
           readOnly
           className="w-full bg-gray-100 px-3 py-2 rounded-xl"
         />
-      </div>
+      </div>      
 
       <div>
         <label className="font-medium">Harga</label>
@@ -228,8 +279,8 @@ export default function OrderForm() {
         <label className="font-medium">Pembayaran (QRIS)</label>
 
         <img
-          src="/qris.png"
-          className="w-full rounded-xl border mt-1"
+          src={QRIS}
+          className="w-full rounded-3xl border mt-1"
           alt="QRIS"
         />
 

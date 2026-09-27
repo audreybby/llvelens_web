@@ -1,4 +1,3 @@
-// src/components/ProductGallery.jsx
 import { useState } from "react";
 
 export default function ProductGallery({ images }) {
@@ -6,7 +5,6 @@ export default function ProductGallery({ images }) {
 
   return (
     <div>
-      {/* Main Image */}
       <div className="mb-4">
         <img
           src={selected}
@@ -14,7 +12,6 @@ export default function ProductGallery({ images }) {
         />
       </div>
 
-      {/* Thumbnails */}
       <div className="flex gap-3 overflow-x-auto">
         {images.map((img, i) => (
           <img

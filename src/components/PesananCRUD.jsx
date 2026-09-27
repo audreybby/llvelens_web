@@ -6,14 +6,19 @@ import {
   doc,
   query,
   orderBy,
+  deleteDoc,
+  setDoc,
+  getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { where } from "firebase/firestore";
 
 const BADGE_STYLES = {
   pending: "bg-yellow-100 text-yellow-800 border border-yellow-200",
   approved: "bg-green-100 text-green-800 border border-green-200",
   rejected: "bg-red-100 text-red-800 border border-red-200",
   process: "bg-blue-100 text-blue-800 border border-blue-200",
+  process_done: "bg-cyan-100 text-cyan-800 border border-cyan-200",
   revisi: "bg-purple-100 text-purple-800 border border-purple-200",
   completed: "bg-emerald-100 text-emerald-800 border border-emerald-200",
   default: "bg-gray-100 text-gray-800 border border-gray-200",
@@ -23,10 +28,58 @@ const ALL_STATUSES = [
   "pending",
   "approved",
   "process",
+  "process_done",
   "revisi",
   "completed",
   "rejected",
 ];
+
+const compressImageToBase64 = (file, maxWidth = 800, targetSize = 300000) => {
+  return new Promise((resolve, reject) => {
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+
+    reader.onload = (event) => {
+
+      const img = new Image();
+      img.src = event.target.result;
+
+      img.onload = () => {
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = height * (maxWidth / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let quality = 0.8;
+        let base64 = canvas.toDataURL("image/jpeg", quality);
+
+        while (base64.length > targetSize && quality > 0.1) {
+          quality -= 0.1;
+          base64 = canvas.toDataURL("image/jpeg", quality);
+        }
+
+        resolve(base64);
+      };
+
+      img.onerror = reject;
+    };
+
+    reader.onerror = reject;
+  });
+};
 
 export default function OrdersSection() {
   const [orders, setOrders] = useState([]);
@@ -39,9 +92,12 @@ export default function OrdersSection() {
   const [revisionMessage, setRevisionMessage] = useState("");
   const [showProcessUpload, setShowProcessUpload] = useState(false);
 
-  // 🔥 realtime fetch
   useEffect(() => {
-    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+    const q = query(
+      collection(db, "orders"),
+      where("isArchived", "==", false),
+      orderBy("createdAt", "desc")
+    );
 
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -51,151 +107,172 @@ export default function OrdersSection() {
     return () => unsub();
   }, []);
 
-  // 🔥 update status normal
   const updateStatus = async (id, status) => {
     await updateDoc(doc(db, "orders", id), { status });
 
     setSelected((prev) => ({ ...prev, status }));
   };
 
-  // 🔥 klik status handler
-  const handleStatusClick = (status) => {
-  if (status === "process") {
-    // ❌ tidak boleh kembali ke process jika sudah lewat
-    if (selected.status !== "pending" && selected.status !== "approved") {
-      alert("Status tidak bisa kembali ke process.");
+  const handleStatusClick = async (status) => {
+    if (status === "rejected") {
+      const confirmReject = confirm("Yakin ingin reject pesanan ini?");
+      if (!confirmReject) return;
+
+      await updateDoc(doc(db, "orders", selected.id), {
+        status: "rejected",
+        isArchived: true,
+        movedAt: Date.now()
+      });
+
+      setSelected(null);
       return;
     }
 
-    setShowProcessUpload(true);
-    setShowRevisionUpload(false);
-    setShowFinalUpload(false);
-    return;
-  }
+    if (status === "process") {
+      if (selected.status !== "approved") {
+        alert("Process hanya bisa dimulai setelah approved.");
+        return;
+      }
 
-  if (status === "revisi") {
-    if ((selected.revisionCount || 0) >= 2) {
-      alert("Kesempatan revisi sudah habis.");
+      updateStatus(selected.id, "process");
       return;
     }
-    setShowRevisionUpload(true);
-    setShowProcessUpload(false);
-    setShowFinalUpload(false);
-    return;
-  }
 
-  if (status === "completed") {
-    setShowFinalUpload(true);
-    setShowRevisionUpload(false);
-    setShowProcessUpload(false);
-    return;
-  }
+    if (status === "process_done") {
+      if (selected.status !== "process") {
+        alert("Process Done hanya bisa setelah process.");
+        return;
+      }
 
-  updateStatus(selected.id, status);
-};
+      setShowProcessUpload(true);
+      setShowRevisionUpload(false);
+      setShowFinalUpload(false);
+      return;
+    }
 
-  // 🔥 upload revisi
+    if (status === "revisi") {
+      if ((selected.revisionCount || 0) >= 2) {
+        alert("Kesempatan revisi sudah habis.");
+        return;
+      }
+
+      setShowRevisionUpload(true);
+      setShowProcessUpload(false);
+      setShowFinalUpload(false);
+      return;
+    }
+
+    if (status === "completed") {
+      setShowFinalUpload(true);
+      setShowRevisionUpload(false);
+      setShowProcessUpload(false);
+      return;
+    }
+
+    updateStatus(selected.id, status);
+  };
+
+ 
   const uploadRevisionFile = async (file) => {
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result;
+    const currentCount = selected.revisionCount || 0;
 
-      const newCount = (selected.revisionCount || 0) + 1;
+    if (currentCount >= 2) {
+      alert("Revisi sudah maksimal (2x)");
+      return;
+    }
 
-      await updateDoc(doc(db, "orders", selected.id), {
-        status: "revisi",
-        revisionCount: newCount,
-        revisionFiles: [...(selected.revisionFiles || []), base64],
-      });
+    const base64 = await compressImageToBase64(file);
 
-      setSelected((prev) => ({
-        ...prev,
-        status: "revisi",
-        revisionCount: newCount,
-        revisionFiles: [...(prev.revisionFiles || []), base64],
-      }));
+    const field = currentCount === 0 ? "revisi1" : "revisi2";
 
-      setShowRevisionUpload(false);
-      alert("Revisi berhasil dikirim");
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  // 🔥 kirim pesan revisi (customer tracking)
-const sendRevisionMessage = async () => {
-  if (!revisionMessage.trim()) return;
-
-  const messageData = {
-    text: revisionMessage,
-    sender: "designer",
-    time: Date.now(),
-  };
-
-  await updateDoc(doc(db, "orders", selected.id), {
-    revisionMessages: [...(selected.revisionMessages || []), messageData],
-  });
-
-  setSelected((prev) => ({
-    ...prev,
-    revisionMessages: [...(prev.revisionMessages || []), messageData],
-  }));
-
-  setRevisionMessage("");
-};
-
-// 🔥 upload file saat process → otomatis revisi
-const uploadProcessFile = async (file) => {
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const base64 = reader.result;
+    const newCount = currentCount + 1;
 
     await updateDoc(doc(db, "orders", selected.id), {
-      processFiles: [...(selected.processFiles || []), base64],
-      status: "revisi", // 🔥 otomatis jadi revisi
+      [field]: base64,
+      status: "revisi",
+      revisionCount: newCount
+    });
+  
+    setSelected((prev) => ({
+      ...prev,
+      [field]: base64,
+      status: "revisi",
+      revisionCount: newCount
+    }));
+
+    setShowRevisionUpload(false);
+
+    alert(`Revisi berhasil dikirim (${field})`);
+  };
+
+  const sendRevisionMessage = async () => {
+    if (!revisionMessage.trim()) return;
+
+    const messageData = {
+      text: revisionMessage,
+      sender: "designer",
+      time: Date.now(),
+    };
+
+    await updateDoc(doc(db, "orders", selected.id), {
+      revisionMessages: [...(selected.revisionMessages || []), messageData],
     });
 
     setSelected((prev) => ({
       ...prev,
-      processFiles: [...(prev.processFiles || []), base64],
-      status: "revisi",
+      revisionMessages: [...(prev.revisionMessages || []), messageData],
+    }));
+
+    setRevisionMessage("");
+  };
+
+
+  const uploadProcessFile = async (file) => {
+    if (!file) return;
+
+    const base64 = await compressImageToBase64(file);
+
+    await updateDoc(doc(db, "orders", selected.id), {
+      result1: base64,
+      status: "process_done"
+    });
+
+    setSelected((prev) => ({
+      ...prev,
+      result1: base64,
+      status: "process_done"
     }));
 
     setShowProcessUpload(false);
-    alert("File process dikirim ke client, status berubah ke revisi");
+
+    alert("Design berhasil dikirim ke client");
   };
 
-  reader.readAsDataURL(file);
-};
-
-  // 🔥 upload final design
   const uploadFinalDesign = async (file) => {
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result;
+    const base64 = await compressImageToBase64(file);
 
-      await updateDoc(doc(db, "orders", selected.id), {
-        finalFile: base64,
-        status: "completed",
-      });
+    const orderRef = doc(db, "orders", selected.id);
+    const snap = await getDoc(orderRef);
 
-      setSelected((prev) => ({
-        ...prev,
-        finalFile: base64,
-        status: "completed",
-      }));
+    if (!snap.exists()) return;
 
-      setShowFinalUpload(false);
-      alert("Design final berhasil dikirim");
-    };
+    const data = snap.data();
 
-    reader.readAsDataURL(file);
+    await updateDoc(doc(db, "orders", selected.id), {
+      finalFile: base64,
+      status: "completed",
+      isArchived: true,
+      movedAt: Date.now()
+    });
+
+    setSelected(null);
+    setShowFinalUpload(false);
+
+    alert("Final design dikirim & pesanan masuk ke history");
   };
 
   const openDetails = (order) => {
@@ -222,7 +299,7 @@ const uploadProcessFile = async (file) => {
 
   return (
     <div className="text-white">
-      {/* ================= TABLE ================= */}
+      {/* TABEL PESANAN */}
       <div className="overflow-x-auto">
         <div className="min-w-full bg-white/5 rounded-2xl border border-white/10 backdrop-blur-md">
 
@@ -235,7 +312,7 @@ const uploadProcessFile = async (file) => {
             <div className="col-span-2 text-right">Aksi</div>
           </div>
 
-          {/* ROWS */}
+          {/* ISI TABEL */}
           <div className="divide-y divide-white/10">
             {orders.map((o) => {
               const badge = BADGE_STYLES[o.status] || BADGE_STYLES.default;
@@ -247,7 +324,7 @@ const uploadProcessFile = async (file) => {
                 >
                   <div className="md:col-span-3">
                     <p className="text-xs text-gray-400 md:hidden">Nama</p>
-                    <p className="font-medium">{o.name}</p>
+                    <p className="font-medium">{o.username}</p>
                   </div>
 
                   <div className="md:col-span-3">
@@ -281,7 +358,7 @@ const uploadProcessFile = async (file) => {
         </div>
       </div>
 
-      {/* ================= POPUP ================= */}
+      {/* POPUP */}
       {selected && (
         <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="absolute inset-0 bg-black/60" onClick={closeDetails} />
@@ -295,7 +372,7 @@ const uploadProcessFile = async (file) => {
             {/* CUSTOMER */}
             <div className="mb-6">
               <h4 className="text-gray-400 mb-2">Customer</h4>
-              <p><b>Nama:</b> {selected.name}</p>
+              <p><b>Nama:</b> {selected.username}</p>
               <p><b>Email:</b> {selected.email}</p>
               <p><b>Telepon:</b> {selected.phone}</p>
             </div>
@@ -303,8 +380,10 @@ const uploadProcessFile = async (file) => {
             {/* DETAIL */}
             <div className="mb-6">
               <h4 className="text-gray-400 mb-2">Detail</h4>
+              <p><b>Category:</b> {selected.productCategory}</p>
+
               <p><b>Produk:</b> {selected.productType}</p>
-              <p className="whitespace-pre-line">{selected.details}</p>
+              <p className="whitespace-pre-line"><b>Details:</b> {selected.details}</p>
             </div>
 
             {/* BUKTI */}
@@ -338,102 +417,111 @@ const uploadProcessFile = async (file) => {
                       {i + 1}. {s}
                     </button>
 
-{/* 🟡 PANEL PROCESS */}
-{s === "process" && showProcessUpload && (
-  <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
-    <p className="text-xs text-gray-400 mb-2">
-      Upload hasil sementara untuk client
-    </p>
-    <input
-      type="file"
-      onChange={(e) => uploadProcessFile(e.target.files[0])}
-    />
-  </div>
-)}
+          {/* PANEL PROCESS */}
+          {s === "process_done" && showProcessUpload && (
+            <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
+              <p className="text-xs text-gray-400 mb-2">
+              Upload hasil design untuk client review
+              </p>
+              <input
+                type="file"
+                onChange={(e) => uploadProcessFile(e.target.files[0])}
+              />
+            </div>
+          )}
 
-{/* 🔵 PANEL REVISI */}
-{s === "revisi" && showRevisionUpload && (
-  <div className="mb-4 p-4 bg-white/5 rounded-lg border border-white/10 space-y-4">
+          {/* PANEL REVISI */}
+          {s === "revisi" && showRevisionUpload && (
+            <div className="mb-4 p-4 bg-white/5 rounded-lg border border-white/10 space-y-4">
 
-    {/* Upload */}
-    <div>
-      <p className="text-xs text-gray-400 mb-2">
-        Upload revisi ({selected.revisionCount || 0}/2)
-      </p>
-      <input
-        type="file"
-        onChange={(e) => uploadRevisionFile(e.target.files[0])}
-      />
-    </div>
+              {/* UPLOAD */}
+              <div>
+                <p className="text-xs text-gray-400 mb-2">
+                  Upload revisi ({selected.revisionCount || 0}/2)
+                </p>
+                <input
+                  type="file"
+                  onChange={(e) => uploadRevisionFile(e.target.files[0])}
+                />
+              </div>
 
-    {/* Chat Revisi */}
-    <div>
-      <p className="text-xs text-gray-400 mb-2">Pesan Revisi</p>
+              {/* CHAT REVISI */}
+              <div>
+                <p className="text-xs text-gray-400 mb-2">Pesan Revisi</p>
 
-      <div className="bg-black/30 rounded p-2 h-28 overflow-y-auto text-sm space-y-1">
-        {selected.revisionMessages?.map((msg, i) => (
-          <div key={i}>
-            <span className="text-blue-300 font-semibold">
-              {msg.sender}:
-            </span>{" "}
-            {msg.text}
-          </div>
-        ))}
+                <div className="bg-black/30 rounded p-2 h-28 overflow-y-auto text-sm space-y-1">
+                  {selected.revisionMessages?.map((msg, i) => (
+                    <div key={i}>
+                      <span className="text-blue-300 font-semibold">
+                        {msg.sender}:
+                      </span>{" "}
+                      {msg.text}
+                    </div>
+                  ))}
 
-        {!selected.revisionMessages?.length && (
-          <p className="text-gray-500 text-xs">Belum ada pesan revisi</p>
-        )}
-      </div>
+                  {!selected.revisionMessages?.length && (
+                    <p className="text-gray-500 text-xs">Belum ada pesan revisi</p>
+                  )}
+                </div>
 
-      <div className="flex gap-2 mt-2">
-        <input
-          value={revisionMessage}
-          onChange={(e) => setRevisionMessage(e.target.value)}
-          placeholder="Tulis pesan revisi..."
-          className="flex-1 px-2 py-1 rounded bg-white/10 text-sm"
-        />
-        <button
-          onClick={sendRevisionMessage}
-          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded text-sm"
-        >
-          Kirim
-        </button>
-      </div>
-    </div>
+                <div className="flex gap-2 mt-2">
+                  <input
+                    value={revisionMessage}
+                    onChange={(e) => setRevisionMessage(e.target.value)}
+                    placeholder="Tulis pesan revisi..."
+                    className="flex-1 px-2 py-1 rounded bg-white/10 text-sm"
+                  />
+                  <button
+                    onClick={sendRevisionMessage}
+                    className="px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded text-sm"
+                  >
+                    Kirim
+                  </button>
+                </div>
+              </div>
 
-    {/* Riwayat File Revisi */}
-    {selected.revisionFiles?.length > 0 && (
-      <div>
-        <p className="text-xs text-gray-400 mb-2">Riwayat Revisi</p>
-        <div className="flex gap-2 flex-wrap">
-          {selected.revisionFiles.map((img, i) => (
-            <img
-              key={i}
-              src={img}
-              className="w-14 h-14 object-contain border rounded cursor-pointer"
-              onClick={() => openZoom(img)}
-            />
-          ))}
-        </div>
-      </div>
-    )}
+              {/* RIWAYAT REVISI */}
+              {(selected.revisi1 || selected.revisi2) && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">Riwayat Revisi</p>
 
-  </div>
-)}
+                  <div className="flex gap-2 flex-wrap">
 
-                    {/* 🟢 PANEL FINAL */}
-                    {s === "completed" && showFinalUpload && (
-                      <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
-                        <p className="text-xs text-gray-400 mb-2">
-                          Upload design final
-                        </p>
-                        <input
-                          type="file"
-                          onChange={(e) => uploadFinalDesign(e.target.files[0])}
-                        />
-                      </div>
+                    {selected.revisi1 && (
+                      <img
+                        src={selected.revisi1}
+                        className="w-14 h-14 object-contain border rounded cursor-pointer"
+                        onClick={() => openZoom(selected.revisi1)}
+                      />
                     )}
+
+                    {selected.revisi2 && (
+                      <img
+                        src={selected.revisi2}
+                        className="w-14 h-14 object-contain border rounded cursor-pointer"
+                        onClick={() => openZoom(selected.revisi2)}
+                      />
+                    )}
+
                   </div>
+                </div>
+              )}
+              </div>
+            )}
+
+          {/* PANEL COMPLETED */}
+          {s === "completed" && showFinalUpload && (
+            <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
+              <p className="text-xs text-gray-400 mb-2">
+                Upload design final
+              </p>
+              <input
+                type="file"
+                onChange={(e) => uploadFinalDesign(e.target.files[0])}
+              />
+              </div>
+          )}
+          </div>
                 );
               })}
             </div>

@@ -16,7 +16,6 @@ const Register = () => {
     e.preventDefault();
 
     try {
-      // Buat akun Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -25,13 +24,12 @@ const Register = () => {
 
       const user = userCredential.user;
 
-      // Simpan user ke Firestore
       await setDoc(doc(db, "users", user.uid), {
         username: username,
         email: email,
         role: "user",
         createdAt: new Date(),
-        photo: "", // kosong dulu
+        photo: "",
       });
 
       alert("User Registered Successfully!");

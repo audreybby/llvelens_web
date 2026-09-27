@@ -8,6 +8,7 @@ export default function ProductsSection() {
   const [products, setProducts] = useState([]);
   const [user, setUser] = useState(null);
   const [showLoginPopup, setShowLoginPopup] = useState(false);
+  const [search, setSearch] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,7 +35,15 @@ export default function ProductsSection() {
       setShowLoginPopup(true);
       return;
     }
-    navigate("/Pesanan", { state: { product } });
+
+    navigate("/Pesanan", {
+      state: {
+        productId: product.id,
+        title: product.title,
+        price: product.price,
+        category: product.category,
+      },
+    });
   };
 
   const detailProduct = (product) => {
@@ -42,116 +51,117 @@ export default function ProductsSection() {
       setShowLoginPopup(true);
       return;
     }
-    navigate(`/product/${product.id}`, { state: { product } });
+
+    navigate(`/product/${product.id}`);
   };
+
+  const filteredProducts = products.filter((item) =>
+    item.title.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <section className="w-full">
-      {/* ================= HEADER ================= */}
-      <div className="bg-[#6BA3D6] py-10 md:py-12 text-center">
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-aclonica text-white drop-shadow-md">
-          Our Products
-        </h2>
+
+      {/* HEADER */}
+      <div className="bg-[#6BA3D6] py-12 text-center">
+        <h2 className="text-3xl font-aclonica text-white">Our Products</h2>
       </div>
 
-      {/* ================= PRODUCT LIST ================= */}
-      <div className="bg-[#F7FAFF] py-12 md:py-16 flex flex-col items-center">
-        <div className="w-full max-w-3xl flex flex-col gap-6 md:gap-8 px-4">
-          {products.length === 0 ? (
-            <p className="text-gray-500 text-center font-poppins">
-              Loading products...
-            </p>
-          ) : (
-            products.map((item) => (
-              <div
-                key={item.id}
-                className="
-                  bg-[#6BA3D6] text-white rounded-xl shadow-md
-                  flex flex-col md:flex-row
-                  justify-between items-start md:items-center
-                  gap-6 md:gap-0
-                  px-6 sm:px-8 md:px-10
-                  py-6 md:py-8
-                "
-              >
-                {/* PRODUCT INFO */}
-                <div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-aclonica drop-shadow-sm">
-                    &gt; {item.category}
-                  </h3>
+      {/* CONTENT */}
+      <div className="bg-[#F7FAFF] py-8 flex justify-center">
+        <div className="w-full max-w-6xl px-4">
 
-                  <p className="text-lg sm:text-xl md:text-2xl font-poppins mt-2">
-                    {new Intl.NumberFormat("id-ID", {
-                      style: "currency",
-                      currency: "IDR",
-                      minimumFractionDigits: 0,
-                    }).format(item.price)}
-                  </p>
+          {/* SEARCH */}
+          <div className="mb-8">
+            <input
+              type="text"
+              placeholder="Cari produk..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full md:w-1/2 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#457B9D]"
+            />
+          </div>
+
+          {/* GRID */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+
+            {filteredProducts.length === 0 ? (
+              <p className="text-gray-500 text-center col-span-full">
+                Produk tidak ditemukan
+              </p>
+            ) : (
+              filteredProducts.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#1D3557]">
+                      {item.title}
+                    </h3>
+
+                    <p className="text-sm text-gray-500 mt-1">
+                      {item.category}
+                    </p>
+
+                    <p className="text-lg font-bold text-[#457B9D] mt-3">
+                      {new Intl.NumberFormat("id-ID", {
+                        style: "currency",
+                        currency: "IDR",
+                        minimumFractionDigits: 0,
+                      }).format(item.price)}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 mt-6">
+                    <button
+                      onClick={() => detailProduct(item)}
+                      className="flex-1 border border-[#457B9D] text-[#457B9D] py-2 rounded-lg text-sm hover:bg-[#457B9D] hover:text-white transition"
+                    >
+                      Detail
+                    </button>
+
+                    <button
+                      onClick={() => handleOrderClick(item)}
+                      className="flex-1 bg-[#457B9D] text-white py-2 rounded-lg text-sm hover:bg-[#1D3557] transition"
+                    >
+                      Order
+                    </button>
+                  </div>
                 </div>
+              ))
+            )}
 
-                {/* BUTTON GROUP */}
-                <div className="flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-auto">
-                  <button
-                    onClick={() => detailProduct(item)}
-                    className="
-                      bg-[#E9EEF7] text-[#1D3557] font-poppins
-                      w-full md:w-auto
-                      px-6 sm:px-10 md:px-16
-                      py-2
-                      rounded-md shadow-sm
-                      hover:bg-[#D5E2EE] transition
-                    "
-                  >
-                    Detail
-                  </button>
-
-                  <button
-                    onClick={() => handleOrderClick(item)}
-                    className="
-                      bg-[#E9EEF7] text-[#1D3557] font-poppins
-                      w-full md:w-auto
-                      px-6 sm:px-10 md:px-16
-                      py-2
-                      rounded-md shadow-sm
-                      hover:bg-[#D5E2EE] transition
-                    "
-                  >
-                    Pesan Sekarang
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
+          </div>
         </div>
       </div>
 
-      {/* ================= LOGIN POPUP ================= */}
       {showLoginPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm text-center">
-            <h3 className="font-poppins text-base sm:text-lg font-semibold mb-3">
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 text-center w-80">
+
+            <h3 className="font-semibold mb-3">
               Harus Login Terlebih Dahulu
             </h3>
 
-            <p className="text-gray-600 text-sm mb-5">
+            <p className="text-gray-600 text-sm mb-4">
               Kamu harus login sebelum bisa melakukan pemesanan.
             </p>
 
             <button
-              onClick={() =>
-                navigate("/Login", { state: { from: "/Products" } })
-              }
-              className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition mb-2"
+              onClick={() => navigate("/Login")}
+              className="w-full bg-blue-600 text-white py-2 rounded mb-2"
             >
               Login Sekarang
             </button>
 
             <button
               onClick={() => setShowLoginPopup(false)}
-              className="w-full bg-gray-200 text-gray-700 py-2 rounded-md hover:bg-gray-300 transition"
+              className="w-full bg-gray-200 py-2 rounded"
             >
               Batal
             </button>
+
           </div>
         </div>
       )}

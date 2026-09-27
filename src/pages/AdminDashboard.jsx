@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import ProductsCRUD from "../components/ProductsCRUD";
 import PortfolioCRUD from "../components/PortfolioCRUD";
 import OrderCRUD from "../components/PesananCRUD";
+import History from "./History";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 
@@ -77,9 +78,7 @@ export default function AdminDashboard() {
           {section === "products" && <ProductsCRUD />}
           {section === "portfolio" && <PortfolioCRUD />}
           {section === "orders" && <OrderCRUD />}
-          {section === "history" && (
-            <h2 className="text-xl font-semibold">Riwayat</h2>
-          )}
+          {section === "history" && <History />}
         </div>
       </main>
     </div>
